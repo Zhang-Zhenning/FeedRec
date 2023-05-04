@@ -29,6 +29,8 @@ def GetUserOneHot(user_id):
     user_id_vector = user_id_vector.astype(int)
     return user_id_vector
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 # ----------------------------define the network-----------------------------
 class Q_NetWork(nn.Module):
@@ -75,8 +77,8 @@ class Q_NetWork(nn.Module):
         clickIdx = torch.from_numpy(sequence[:, 1] == CLICK)
         skipIdx = torch.from_numpy(sequence[:, 1] == SKIP)
 
-        user_raw = torch.from_numpy(GetUserOneHot(user)).float().view(-1,1).to("cuda")
-        nextitem_raw = torch.from_numpy(GetItemOneHot(nextitem)).float().view(-1,1).to("cuda")
+        user_raw = torch.from_numpy(GetUserOneHot(user)).float().view(-1,1).to(device)
+        nextitem_raw = torch.from_numpy(GetItemOneHot(nextitem)).float().view(-1,1).to(device)
         user_raw.requires_grad = False
         nextitem_raw.requires_grad = False
 
@@ -85,14 +87,16 @@ class Q_NetWork(nn.Module):
         # get next item embedding
         nextItemEmbedding = torch.mm(self.itemEmbeddingMat,nextitem_raw).view(1, -1)
         # get dwel time vector
-        dwelTimeVector = torch.from_numpy(sequence[:, 2]).float().view(-1, 1).to("cuda")
+        dwelTimeVector = torch.from_numpy(sequence[:, 2]).float().view(-1, 1).to(device)
+        dwelTimeVector.requires_grad = False
+
 
 
         # for each item, get the item embeding then get the item projection vector
         itemProjections = None
         for idx,item in enumerate(sequence[:, 0]):
             item_raw = torch.from_numpy(
-                GetItemOneHot(item)).float().view(-1, 1).to("cuda")
+                GetItemOneHot(item)).float().view(-1, 1).to(device)
             # item_raw don't need to be a parameter
             item_raw.requires_grad = False
 
@@ -200,9 +204,9 @@ class S_NetWork(nn.Module):
         skipIdx = torch.from_numpy(sequence[:, 1] == SKIP)
 
         user_raw = torch.from_numpy(GetUserOneHot(
-            user)).float().view(-1, 1).to("cuda")
+            user)).float().view(-1, 1).to(device)
         nextitem_raw = torch.from_numpy(GetItemOneHot(
-            nextitem)).float().view(-1, 1).to("cuda")
+            nextitem)).float().view(-1, 1).to(device)
         user_raw.requires_grad = False
         nextitem_raw.requires_grad = False
 
@@ -213,13 +217,14 @@ class S_NetWork(nn.Module):
             self.itemEmbeddingMat, nextitem_raw).view(1, -1)
         # get dwel time vector
         dwelTimeVector = torch.from_numpy(
-            sequence[:, 2]).float().view(-1, 1).to("cuda")
+            sequence[:, 2]).float().view(-1, 1).to(device)
+        dwelTimeVector.requires_grad = False
 
         # for each item, get the item embeding then get the item projection vector
         itemProjections = None
         for idx, item in enumerate(sequence[:, 0]):
             item_raw = torch.from_numpy(
-                GetItemOneHot(item)).float().view(-1, 1).to("cuda")
+                GetItemOneHot(item)).float().view(-1, 1).to(device)
             # item_raw don't need to be a parameter
             item_raw.requires_grad = False
 
@@ -282,10 +287,10 @@ class S_NetWork(nn.Module):
 
 
 model = Q_NetWork()
-model.to("cuda")
+model.to(device)
 
 model1 = S_NetWork()
-model1.to("cuda")
+model1.to(device)
 
 test_data = np.array([[1, 1, 1], [2, 2, 2], [3, 0, 3]])
 
