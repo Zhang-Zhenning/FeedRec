@@ -79,7 +79,7 @@ if __name__ == '__main__':
     # setup the training dataset buffer
     train_buffer = []
     for traj, user, revisit, rewardparas in tqdm(zip(train_trajectories, train_users, train_revisits, train_rewardparas)):
-        for end_idx in range(400,1000):
+        for end_idx in range(50,100):
             s1 = State(user,traj[:end_idx],revisit[:end_idx])
             s2 = State(user,traj[:end_idx+1],revisit[:end_idx+1])
             r1 = Reward(*rewardparas[end_idx])
@@ -95,16 +95,16 @@ if __name__ == '__main__':
     qn.to(device)
     
     # define the optimizer
-    sn_optimizer = torch.optim.Adam(sn.parameters(), lr=0.0001)
-    qn_optimizer = torch.optim.Adam(qn.parameters(), lr=0.0001)
+    sn_optimizer = torch.optim.Adam(sn.parameters(), lr=LEARNING_RATE)
+    qn_optimizer = torch.optim.Adam(qn.parameters(), lr=LEARNING_RATE)
 
     # pretrining the S network
     print(f"Pretraining the S network...")
     batch = random.sample(train_buffer,200)
-    for epoch in tqdm(range(50)):
+    for epoch in tqdm(range(PRETRAIN_EPOCH)):
         # random sample 400 pairs from train_buffer
         total_loss = 0
-        for cur_pair in batch:
+        for cur_pair in tqdm(batch):
             s1,i1,r1,s2 = cur_pair
             cur_loss = S_loss(qn,sn,s1)
             total_loss += cur_loss.item()
@@ -119,10 +119,10 @@ if __name__ == '__main__':
 
     # iterative training of S-network and Q-network
     print(f"Training the S network and Q network...")
-    for i in tqdm(range(100)):
+    for i in tqdm(range(MAIN_EPOCH)):
         # generate pairs from train_buffer and S network
         # sample 50 pairs from train_buffer
-        cur_buffer = random.sample(train_buffer,50)
+        cur_buffer = random.sample(train_buffer,10)
 
         # sample a user sequence by S network
         cur_user = random.randint(0,TOTAL_NUM_USERS-1)
@@ -160,7 +160,7 @@ if __name__ == '__main__':
             
             # get the max feedback from cur_feedback
             real_feedback = np.argmax(cur_feedback)
-            leaving = True if cur_leaving[0] > 0.7 else False
+            leaving = True if cur_leaving[0][0] > 0.6 else False
             
             cur_mc = 1 if real_feedback == CLICK else 0
             cur_mc = 5 if real_feedback == PURCHASE else cur_mc
@@ -193,7 +193,7 @@ if __name__ == '__main__':
 
         # update the S network
         s_batch = random.sample(train_buffer,50,replacement=False)
-        for epoch in range(50):
+        for epoch in range(PRETRAIN_EPOCH):
             # random sample 400 pairs from train_buffer
             for cur_pair in s_batch:
                 s1,i1,r1,s2 = cur_pair

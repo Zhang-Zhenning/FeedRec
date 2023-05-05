@@ -10,6 +10,9 @@ from tqdm import tqdm
 LAMB = 0.9
 EPS = 0.1
 TRAIN_NUM = 80
+LEARNING_RATE = 0.0001
+PRETRAIN_EPOCH = 20
+MAIN_EPOCH = 50
 
 # f_t (user feedback type) constants
 CLICK = 0
@@ -51,7 +54,12 @@ class State:
         self.x = trajectory
         self.x = np.array(self.x)
         self.x = self.x.reshape((-1,3))
+        
 
+        if not len(trajectory) == len(revisit_times):
+            print("trajectory and revisit_times have different length")
+        
+        # print(revisit_times)
         # produce the revisit time vector
         self.revisit_times = np.array(revisit_times).reshape(1,-1)
 
@@ -423,11 +431,9 @@ def Q_loss(q_model,s1,i1,r1,s2,lamb=LAMB):
             score = q_model(s2.user,s2.x, item)
             if score > maxi_score:
                 maxi_score = score
-                maxi_item = item
     
-    score_s1_i1 = q_model(s1.user,s1.x,i1)
-    loss = (score_s1_i1 - (r1 + lamb * maxi_score)).pow(2).mean()
-    loss = loss.double()
+    score_s1_i1 = q_model(s1.user,s1.x,i1).double()
+    loss = (score_s1_i1 - (r1 + lamb * maxi_score)).pow(2).mean().double()
     return loss
 
 # loss function for S network
@@ -470,7 +476,7 @@ def S_loss(q_model,s_model,st,lamb=LAMB):
     # transfer total_loss to double
     total_loss = total_loss.double()
 
-    return total_loss
+    return total_loss / T
 
 
 
