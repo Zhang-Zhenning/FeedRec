@@ -131,6 +131,8 @@ class Q_NetWork(nn.Module):
         nextItemEmbedding = torch.mm(self.itemEmbeddingMat,nextitem_raw).view(1, -1)
         # get dwel time vector
         dwelTimeVector = torch.from_numpy(sequence[:, 2]).float().view(-1, 1).to(device)
+        if sequence == []:
+            dwelTimeVector = torch.zeros(1,1).to(device)
         dwelTimeVector.requires_grad = False
 
 
@@ -159,6 +161,9 @@ class Q_NetWork(nn.Module):
                 itemProjections = itemEmbedding
             else:
                 itemProjections = torch.cat([itemProjections, itemEmbedding], dim=0)
+        
+        if itemProjections is None:
+            itemProjections = torch.zeros(1, self.itemEmbLen).to(device)
         
         # get the d_j vector
         itemProjections = torch.cat([dwelTimeVector,itemProjections], dim=1).unsqueeze(0)
@@ -279,6 +284,8 @@ class S_NetWork(nn.Module):
         # get dwel time vector
         dwelTimeVector = torch.from_numpy(
             sequence[:, 2]).float().view(-1, 1).to(device)
+        if sequence == []:
+            dwelTimeVector = torch.zeros(1, 1).to(device)
         dwelTimeVector.requires_grad = False
 
         # for each item, get the item embeding then get the item projection vector
@@ -311,6 +318,9 @@ class S_NetWork(nn.Module):
                 itemProjections = torch.cat(
                     [itemProjections, itemEmbedding], dim=0)
 
+        if itemProjections is None:
+            itemProjections = torch.zeros(1, self.itemEmbLen).to(device)
+
         # get the d_j vector
         itemProjections = torch.cat(
             [dwelTimeVector, itemProjections], dim=1).unsqueeze(0)
@@ -326,14 +336,14 @@ class S_NetWork(nn.Module):
         else:
             purchaseBehaviorVector = torch.zeros(
                 1, 1, self.secLstmHiddenSize).to(device)
-            
+
         if rawBehaviorVector[:, clickIdx, :].shape[1] != 0:
             clickBehaviorVector, _ = self.clickLstm(
                 rawBehaviorVector[:, clickIdx, :])
         else:
             clickBehaviorVector = torch.zeros(
                 1, 1, self.secLstmHiddenSize).to(device)
-            
+
         if rawBehaviorVector[:, skipIdx, :].shape[1] != 0:
             skipBehaviorVector, _ = self.skipLstm(
                 rawBehaviorVector[:, skipIdx, :])
