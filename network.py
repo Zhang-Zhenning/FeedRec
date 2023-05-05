@@ -113,8 +113,8 @@ class Q_NetWork(nn.Module):
         self.outputLayer2 = nn.Linear(16, 1)
 
     # sequence should be in the format [...[i_j,f_j,d_j]...] (numpy array)
-    def forward(self, s, nextitem):
-        user,sequence = s.user,s.x
+    def forward(self, user,sequence, nextitem):
+
         # get feed back type index
         purchaseIdx = torch.from_numpy(sequence[:, 1] == PURCHASE)
         clickIdx = torch.from_numpy(sequence[:, 1] == CLICK)
@@ -257,8 +257,7 @@ class S_NetWork(nn.Module):
 
 
     # sequence should be in the format [...[i_j,f_j,d_j]...] (numpy array)
-    def forward(self, s, nextitem):
-        user, sequence = s.user, s.x
+    def forward(self, user, sequence, nextitem):
 
         # get feed back type index
         purchaseIdx = torch.from_numpy(sequence[:, 1] == PURCHASE)
@@ -364,7 +363,7 @@ class S_NetWork(nn.Module):
 
 
 # pi(ik | sk) based on Q network and eps-greedy
-def Policy_Q(q_model,sk,ik,eps=EPS):
+def Policy_Q(q_model,usr,cur_x,ik,eps=EPS):
     # sk is a state
     # ik is a item
     # eps is the probability to choose a random item
@@ -376,7 +375,7 @@ def Policy_Q(q_model,sk,ik,eps=EPS):
         
         with torch.no_grad():
             for item in range(TOTAL_NUM_ITEMS):
-                score = q_model(sk,item)
+                score = q_model(usr,cur_x,item)
                 if score > maxi_score:
                     maxi_score = score
                     maxi_item = item
@@ -398,12 +397,12 @@ def Q_loss(q_model,s1,i1,r1,s2,lamb=LAMB):
     # this part is served as a constant in the loss function, so we don't need to calculate the gradient
     with torch.no_grad():
         for item in range(TOTAL_NUM_ITEMS):
-            score = q_model(s2, item)
+            score = q_model(s2.user,s2.x, item)
             if score > maxi_score:
                 maxi_score = score
                 maxi_item = item
     
-    score_s1_i1 = q_model(s1,i1)
+    score_s1_i1 = q_model(s1.user,s1.x,i1)
     loss = (score_s1_i1 - (r1 + lamb * maxi_score)).pow(2).mean()
 
     return loss
@@ -415,8 +414,8 @@ def S_loss(q_model,s_model,st,lamb=LAMB):
     is_weight = None
     T = len(st.raw_traj)
     for t in tqdm(range(T-1)):
-        cur_state = State(st.user, st.raw_traj[:t+1], st.raw_revisit[:t+1])
-        f_t,d_t,v_t,l_t = s_model(cur_state, st.raw_traj[t+1][0])
+        # cur_state = State(st.user, st.raw_traj[:t+1], st.raw_revisit[:t+1])
+        f_t,d_t,v_t,l_t = s_model(st.user,st.x[:t+1,:], st.raw_traj[t+1][0])
         g_f_t = st.feedback[t+1]
         g_d_t = st.raw_traj[t+1][2]
         g_v_t = st.revisit_times[0][t+1]
@@ -425,11 +424,11 @@ def S_loss(q_model,s_model,st,lamb=LAMB):
         # calculate the loss of S network
         cur_loss = lamb_f * torch.nn.functional.kl_div(torch.log(f_t), torch.from_numpy(g_f_t).to(device), reduction='batchmean') + lamb_d * (d_t - g_d_t).pow(2).mean() + lamb_v * (v_t - g_v_t).pow(2).mean() + lamb_l * torch.nn.functional.kl_div(torch.log(l_t), torch.from_numpy(g_l_t).to(device), reduction='batchmean')
         # calculate the importance sampling weight
-        cur_is_weight = Policy_Q(q_model, cur_state, st.raw_traj[t][0]) / Policy_B()
-        if is_weight is None:
-            is_weight = cur_is_weight
-        else:
-            is_weight *= cur_is_weight
+        # cur_is_weight = Policy_Q(q_model, st.user,st.x[:t+1,:], st.raw_traj[t][0]) / Policy_B()
+        # if is_weight is None:
+        #     is_weight = cur_is_weight
+        # else:
+        #     is_weight *= cur_is_weight
         
         if total_loss is None:
             total_loss = (lamb**t) * cur_loss 

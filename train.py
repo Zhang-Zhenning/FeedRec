@@ -59,8 +59,8 @@ if __name__ == '__main__':
     Trajs,Users,Res = M
 
     test_user = Users[0]
-    test_traj = Trajs[0][:100]
-    test_res_temp = Res[0][:100]
+    test_traj = Trajs[0]
+    test_res_temp = Res[0]
     test_res = [k[2] for k in test_res_temp]
 
     # initialize the network
