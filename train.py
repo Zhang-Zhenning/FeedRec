@@ -59,20 +59,26 @@ if __name__ == '__main__':
     Trajs,Users,Res = M
 
     # divide the dataset into training set and test set
-    train_trajectories = Trajs[:800]
-    train_users = Users[:800]
-    train_rewardparas = Res[:800]
+    train_trajectories = Trajs[:TRAIN_NUM]
+    train_users = Users[:TRAIN_NUM]
+    train_rewardparas = Res[:TRAIN_NUM]
 
-    test_trajectories = Trajs[800:]
-    test_users = Users[800:]
-    test_rewardparas = Res[800:]
-
-    train_revisits = [k[2] for k in train_rewardparas]
-    test_revisits = [k[2] for k in test_rewardparas]
-
+    test_trajectories = Trajs[TRAIN_NUM:]
+    test_users = Users[TRAIN_NUM:]
+    test_rewardparas = Res[TRAIN_NUM:]
+    
+    train_revisits = []
+    for k in train_rewardparas:
+        cur_k = []
+        for kk in k:
+            cur_k.append(kk[2])
+        
+        train_revisits.append(cur_k)
+    
+    print(f"Setting up the training dataset...")
     # setup the training dataset buffer
     train_buffer = []
-    for traj, user, revisit, rewardparas in zip(train_trajectories, train_users, train_revisits, train_rewardparas):
+    for traj, user, revisit, rewardparas in tqdm(zip(train_trajectories, train_users, train_revisits, train_rewardparas)):
         for end_idx in range(400,1000):
             s1 = State(user,traj[:end_idx],revisit[:end_idx])
             s2 = State(user,traj[:end_idx+1],revisit[:end_idx+1])
@@ -80,6 +86,7 @@ if __name__ == '__main__':
             i1 = traj[end_idx][0]
             train_buffer.append([s1,i1,r1,s2])
 
+    print(f"Lenght of the training dataset: {len(train_buffer)}")
     # initialize the network
     sn = S_NetWork()
     qn = Q_NetWork()
@@ -93,8 +100,8 @@ if __name__ == '__main__':
 
     # pretrining the S network
     print(f"Pretraining the S network...")
-    batch = random.sample(train_buffer,400,replacement=False)
-    for epoch in range(50):
+    batch = random.sample(train_buffer,200)
+    for epoch in tqdm(range(50)):
         # random sample 400 pairs from train_buffer
         total_loss = 0
         for cur_pair in batch:
@@ -112,10 +119,10 @@ if __name__ == '__main__':
 
     # iterative training of S-network and Q-network
     print(f"Training the S network and Q network...")
-    for i in range(100):
+    for i in tqdm(range(100)):
         # generate pairs from train_buffer and S network
         # sample 50 pairs from train_buffer
-        cur_buffer = random.sample(train_buffer,50,replacement=False)
+        cur_buffer = random.sample(train_buffer,50)
 
         # sample a user sequence by S network
         cur_user = random.randint(0,TOTAL_NUM_USERS-1)

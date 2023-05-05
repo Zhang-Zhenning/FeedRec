@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 LAMB = 0.9
 EPS = 0.1
+TRAIN_NUM = 80
 
 # f_t (user feedback type) constants
 CLICK = 0
@@ -115,95 +116,106 @@ class Q_NetWork(nn.Module):
     # sequence should be in the format [...[i_j,f_j,d_j]...] (numpy array)
     def forward(self, user,sequence, nextitem):
 
-        # get feed back type index
+       # get feed back type index
         purchaseIdx = torch.from_numpy(sequence[:, 1] == PURCHASE)
         clickIdx = torch.from_numpy(sequence[:, 1] == CLICK)
         skipIdx = torch.from_numpy(sequence[:, 1] == SKIP)
 
-        user_raw = torch.from_numpy(GetUserOneHot(user)).float().view(-1,1).to(device)
-        nextitem_raw = torch.from_numpy(GetItemOneHot(nextitem)).float().view(-1,1).to(device)
+        user_raw = torch.from_numpy(GetUserOneHot(
+            user)).double().view(-1, 1).to(device)
+        nextitem_raw = torch.from_numpy(GetItemOneHot(
+            nextitem)).double().view(-1, 1).to(device)
         user_raw.requires_grad = False
         nextitem_raw.requires_grad = False
 
         # get user embedding
-        userEmbedding = torch.mm(self.userEmbeddingMat,user_raw).view(1, -1)
+        userEmbedding = torch.mm(
+            self.userEmbeddingMat, user_raw.float()).double().view(1, -1)
         # get next item embedding
-        nextItemEmbedding = torch.mm(self.itemEmbeddingMat,nextitem_raw).view(1, -1)
+        nextItemEmbedding = torch.mm(
+            self.itemEmbeddingMat, nextitem_raw.float()).double().view(1, -1)
         # get dwel time vector
-        dwelTimeVector = torch.from_numpy(sequence[:, 2]).float().view(-1, 1).to(device)
+        dwelTimeVector = torch.from_numpy(
+            sequence[:, 2]).double().view(-1, 1).to(device)
         if sequence == []:
-            dwelTimeVector = torch.zeros(1,1).to(device)
+            dwelTimeVector = torch.zeros(1, 1).to(device)
         dwelTimeVector.requires_grad = False
-
-
 
         # for each item, get the item embeding then get the item projection vector
         itemProjections = None
-        for idx,item in enumerate(sequence[:, 0]):
+        for idx, item in enumerate(sequence[:, 0]):
             item_raw = torch.from_numpy(
-                GetItemOneHot(item)).float().view(-1, 1).to(device)
+                GetItemOneHot(item)).double().view(-1, 1).to(device)
             # item_raw don't need to be a parameter
             item_raw.requires_grad = False
 
             # convert item to one-hot vector then get item embedding
-            itemEmbedding = torch.mm(self.itemEmbeddingMat, item_raw).view(-1, 1)
+            itemEmbedding = torch.mm(
+                self.itemEmbeddingMat, item_raw.float()).double().view(-1, 1)
 
             if sequence[idx][1] == PURCHASE:
-                itemEmbedding = torch.mm(self.purchaseProjection, itemEmbedding).view(1, -1)
+                itemEmbedding = torch.mm(
+                    self.purchaseProjection, itemEmbedding.float()).double().view(1, -1)
             elif sequence[idx][1] == CLICK:
-                itemEmbedding = torch.mm(self.clickProjection, itemEmbedding).view(1, -1)
+                itemEmbedding = torch.mm(
+                    self.clickProjection, itemEmbedding.float()).double().view(1, -1)
             elif sequence[idx][1] == SKIP:
-                itemEmbedding = torch.mm(self.skipProjection, itemEmbedding).view(1, -1)
+                itemEmbedding = torch.mm(
+                    self.skipProjection, itemEmbedding.float()).double().view(1, -1)
             else:
                 print("Error: unknown feedback type")
 
             if itemProjections is None:
                 itemProjections = itemEmbedding
             else:
-                itemProjections = torch.cat([itemProjections, itemEmbedding], dim=0)
-        
-        if itemProjections is None:
-            itemProjections = torch.zeros(1, self.itemEmbLen).to(device)
-        
-        # get the d_j vector
-        itemProjections = torch.cat([dwelTimeVector,itemProjections], dim=1).unsqueeze(0)
+                itemProjections = torch.cat(
+                    [itemProjections, itemEmbedding], dim=0)
 
+        if itemProjections is None:
+            itemProjections = torch.zeros(
+                1, self.itemEmbLen).double().to(device)
+
+        # get the d_j vector
+        itemProjections = torch.cat(
+            [dwelTimeVector, itemProjections], dim=1).double().unsqueeze(0)
 
         # get the raw behavior vector
-        rawBehaviorVector, _ = self.timeLstm(itemProjections)
-        H_r_t = rawBehaviorVector.squeeze(0)[-1].view(1, -1)
+        rawBehaviorVector, _ = self.timeLstm(itemProjections.float())
+        H_r_t = rawBehaviorVector.double().squeeze(0)[-1].view(1, -1)
 
         # get the hierarchical behavior vector
         if rawBehaviorVector[:, purchaseIdx, :].shape[1] != 0:
             purchaseBehaviorVector, _ = self.purchaseLstm(
-                rawBehaviorVector[:, purchaseIdx, :])
+                rawBehaviorVector[:, purchaseIdx, :].float())
         else:
             purchaseBehaviorVector = torch.zeros(
-                1, 1, self.secLstmHiddenSize).to(device)
-            
+                1, 1, self.secLstmHiddenSize).double().to(device)
+
         if rawBehaviorVector[:, clickIdx, :].shape[1] != 0:
             clickBehaviorVector, _ = self.clickLstm(
-                rawBehaviorVector[:, clickIdx, :])
+                rawBehaviorVector[:, clickIdx, :].float())
         else:
             clickBehaviorVector = torch.zeros(
-                1, 1, self.secLstmHiddenSize).to(device)
-            
+                1, 1, self.secLstmHiddenSize).double().to(device)
+
         if rawBehaviorVector[:, skipIdx, :].shape[1] != 0:
             skipBehaviorVector, _ = self.skipLstm(
-                rawBehaviorVector[:, skipIdx, :])
+                rawBehaviorVector[:, skipIdx, :].float())
         else:
             skipBehaviorVector = torch.zeros(
-                1, 1, self.secLstmHiddenSize).to(device)
+                1, 1, self.secLstmHiddenSize).double().to(device)
 
-        H_s_t = skipBehaviorVector.squeeze(0)[-1].view(1, -1)
-        H_c_t = clickBehaviorVector.squeeze(0)[-1].view(1, -1)
-        H_p_t = purchaseBehaviorVector.squeeze(0)[-1].view(1, -1)
+        H_s_t = skipBehaviorVector.double().squeeze(0)[-1].view(1, -1)
+        H_c_t = clickBehaviorVector.double().squeeze(0)[-1].view(1, -1)
+        H_p_t = purchaseBehaviorVector.double().squeeze(0)[-1].view(1, -1)
 
         # concatenate all the vectors
-        infoFusion = torch.cat([nextItemEmbedding,userEmbedding, H_r_t, H_s_t, H_c_t, H_p_t], dim=1)
+        infoFusion = torch.cat(
+            [nextItemEmbedding, userEmbedding, H_r_t, H_s_t, H_c_t, H_p_t], dim=1).float()
+
 
         # feed into the output layer
-        output = self.outputLayer2(self.activation(self.outputLayer(infoFusion)))
+        output = self.outputLayer2(self.activation(self.outputLayer(infoFusion))).double()
 
         return output
 
@@ -270,20 +282,20 @@ class S_NetWork(nn.Module):
         skipIdx = torch.from_numpy(sequence[:, 1] == SKIP)
 
         user_raw = torch.from_numpy(GetUserOneHot(
-            user)).float().view(-1, 1).to(device)
+            user)).double().view(-1, 1).to(device)
         nextitem_raw = torch.from_numpy(GetItemOneHot(
-            nextitem)).float().view(-1, 1).to(device)
+            nextitem)).double().view(-1, 1).to(device)
         user_raw.requires_grad = False
         nextitem_raw.requires_grad = False
 
         # get user embedding
-        userEmbedding = torch.mm(self.userEmbeddingMat, user_raw).view(1, -1)
+        userEmbedding = torch.mm(self.userEmbeddingMat, user_raw.float()).double().view(1, -1)
         # get next item embedding
         nextItemEmbedding = torch.mm(
-            self.itemEmbeddingMat, nextitem_raw).view(1, -1)
+            self.itemEmbeddingMat, nextitem_raw.float()).double().view(1, -1)
         # get dwel time vector
         dwelTimeVector = torch.from_numpy(
-            sequence[:, 2]).float().view(-1, 1).to(device)
+            sequence[:, 2]).double().view(-1, 1).to(device)
         if sequence == []:
             dwelTimeVector = torch.zeros(1, 1).to(device)
         dwelTimeVector.requires_grad = False
@@ -292,23 +304,23 @@ class S_NetWork(nn.Module):
         itemProjections = None
         for idx, item in enumerate(sequence[:, 0]):
             item_raw = torch.from_numpy(
-                GetItemOneHot(item)).float().view(-1, 1).to(device)
+                GetItemOneHot(item)).double().view(-1, 1).to(device)
             # item_raw don't need to be a parameter
             item_raw.requires_grad = False
 
             # convert item to one-hot vector then get item embedding
             itemEmbedding = torch.mm(
-                self.itemEmbeddingMat, item_raw).view(-1, 1)
+                self.itemEmbeddingMat, item_raw.float()).double().view(-1, 1)
 
             if sequence[idx][1] == PURCHASE:
                 itemEmbedding = torch.mm(
-                    self.purchaseProjection, itemEmbedding).view(1, -1)
+                    self.purchaseProjection, itemEmbedding.float()).double().view(1, -1)
             elif sequence[idx][1] == CLICK:
                 itemEmbedding = torch.mm(
-                    self.clickProjection, itemEmbedding).view(1, -1)
+                    self.clickProjection, itemEmbedding.float()).double().view(1, -1)
             elif sequence[idx][1] == SKIP:
                 itemEmbedding = torch.mm(
-                    self.skipProjection, itemEmbedding).view(1, -1)
+                    self.skipProjection, itemEmbedding.float()).double().view(1, -1)
             else:
                 print("Error: unknown feedback type")
 
@@ -319,54 +331,55 @@ class S_NetWork(nn.Module):
                     [itemProjections, itemEmbedding], dim=0)
 
         if itemProjections is None:
-            itemProjections = torch.zeros(1, self.itemEmbLen).to(device)
+            itemProjections = torch.zeros(1, self.itemEmbLen).double().to(device)
 
         # get the d_j vector
         itemProjections = torch.cat(
-            [dwelTimeVector, itemProjections], dim=1).unsqueeze(0)
+            [dwelTimeVector, itemProjections], dim=1).double().unsqueeze(0)
 
         # get the raw behavior vector
-        rawBehaviorVector, _ = self.timeLstm(itemProjections)
-        H_r_t = rawBehaviorVector.squeeze(0)[-1].view(1, -1)
+        rawBehaviorVector, _ = self.timeLstm(itemProjections.float())
+        H_r_t = rawBehaviorVector.double().squeeze(0)[-1].view(1, -1)
 
         # get the hierarchical behavior vector
         if rawBehaviorVector[:, purchaseIdx, :].shape[1] != 0:
             purchaseBehaviorVector, _ = self.purchaseLstm(
-                rawBehaviorVector[:, purchaseIdx, :])
+                rawBehaviorVector[:, purchaseIdx, :].float())
         else:
             purchaseBehaviorVector = torch.zeros(
-                1, 1, self.secLstmHiddenSize).to(device)
+                1, 1, self.secLstmHiddenSize).double().to(device)
 
         if rawBehaviorVector[:, clickIdx, :].shape[1] != 0:
             clickBehaviorVector, _ = self.clickLstm(
-                rawBehaviorVector[:, clickIdx, :])
+                rawBehaviorVector[:, clickIdx, :].float())
         else:
             clickBehaviorVector = torch.zeros(
-                1, 1, self.secLstmHiddenSize).to(device)
+                1, 1, self.secLstmHiddenSize).double().to(device)
 
         if rawBehaviorVector[:, skipIdx, :].shape[1] != 0:
             skipBehaviorVector, _ = self.skipLstm(
-                rawBehaviorVector[:, skipIdx, :])
+                rawBehaviorVector[:, skipIdx, :].float())
         else:
             skipBehaviorVector = torch.zeros(
-                1, 1, self.secLstmHiddenSize).to(device)
+                1, 1, self.secLstmHiddenSize).double().to(device)
     
-        H_s_t = skipBehaviorVector.squeeze(0)[-1].view(1, -1)
-        H_c_t = clickBehaviorVector.squeeze(0)[-1].view(1, -1)
-        H_p_t = purchaseBehaviorVector.squeeze(0)[-1].view(1, -1)
+        H_s_t = skipBehaviorVector.double().squeeze(0)[-1].view(1, -1)
+        H_c_t = clickBehaviorVector.double().squeeze(0)[-1].view(1, -1)
+        H_p_t = purchaseBehaviorVector.double().squeeze(0)[-1].view(1, -1)
 
         # concatenate all the vectors
         infoFusion = torch.cat(
-            [nextItemEmbedding, userEmbedding, H_r_t, H_s_t, H_c_t, H_p_t], dim=1)
+            [nextItemEmbedding, userEmbedding, H_r_t, H_s_t, H_c_t, H_p_t], dim=1).float()
         
         # get the feedback type
-        f_t = self.feedbackOutput(self.feedbackLayer(self.activationWay1(self.outputWay1(infoFusion))))
+        f_t = self.feedbackOutput(self.feedbackLayer(self.activationWay1(self.outputWay1(infoFusion)))).double()
         # get the dwell time
-        d_t = self.dwellTimeLayer(self.activationWay1(self.outputWay1(infoFusion)))
+        d_t = self.dwellTimeLayer(self.activationWay1(self.outputWay1(infoFusion))).double()
         # get the revisit time
-        v_t = self.revisitLayer(self.activationWay2(self.outputWay2(infoFusion)))
+        v_t = self.revisitLayer(self.activationWay2(self.outputWay2(infoFusion))).double()
         # get the leave probability
-        l_t = self.leaveOutput(self.leaveLayer(self.activationWay2(self.outputWay2(infoFusion))))
+        l_t = self.leaveOutput(self.leaveLayer(
+            self.activationWay2(self.outputWay2(infoFusion)))).double()
 
 
         return f_t,d_t,v_t,l_t
@@ -414,7 +427,7 @@ def Q_loss(q_model,s1,i1,r1,s2,lamb=LAMB):
     
     score_s1_i1 = q_model(s1.user,s1.x,i1)
     loss = (score_s1_i1 - (r1 + lamb * maxi_score)).pow(2).mean()
-
+    loss = loss.double()
     return loss
 
 # loss function for S network
@@ -423,7 +436,7 @@ def S_loss(q_model,s_model,st,lamb=LAMB):
     total_loss = None
     is_weight = None
     T = len(st.raw_traj)
-    for t in tqdm(range(T-1)):
+    for t in range(T-1):
         # cur_state = State(st.user, st.raw_traj[:t+1], st.raw_revisit[:t+1])
         f_t,d_t,v_t,l_t = s_model(st.user,st.x[:t+1,:], st.raw_traj[t+1][0])
         g_f_t = st.feedback[t+1]
@@ -432,19 +445,31 @@ def S_loss(q_model,s_model,st,lamb=LAMB):
         g_l_t = st.leave[t+1]
 
         # calculate the loss of S network
-        cur_loss = lamb_f * torch.nn.functional.kl_div(torch.log(f_t), torch.from_numpy(g_f_t).to(device), reduction='batchmean') + lamb_d * (d_t - g_d_t).pow(2).mean() + lamb_v * (v_t - g_v_t).pow(2).mean() + lamb_l * torch.nn.functional.kl_div(torch.log(l_t), torch.from_numpy(g_l_t).to(device), reduction='batchmean')
+        log_ft = torch.log(f_t)
+        log_gft = torch.from_numpy(g_f_t).to(device).view(1,-1)
+        ls1 = lamb_f * torch.nn.functional.kl_div(log_ft, log_gft, reduction='sum')
+        ls2 = lamb_d * (d_t - g_d_t).pow(2)
+        ls3 = lamb_v * (v_t - g_v_t).pow(2)
+        log_lt = torch.log(l_t)
+        log_glt = torch.from_numpy(g_l_t).to(device).view(1,-1)
+        ls4 = lamb_l * torch.nn.functional.kl_div(log_lt, log_glt, reduction='sum')
         # calculate the importance sampling weight
         # cur_is_weight = Policy_Q(q_model, st.user,st.x[:t+1,:], st.raw_traj[t][0]) / Policy_B()
         # if is_weight is None:
         #     is_weight = cur_is_weight
         # else:
         #     is_weight *= cur_is_weight
+        cur_loss = ls1 + ls2 + ls3 + ls4
+        cur_loss = cur_loss.double()
         
         if total_loss is None:
             total_loss = (lamb**t) * cur_loss 
         else:
             total_loss = total_loss + (lamb**t) * cur_loss
     
+    # transfer total_loss to double
+    total_loss = total_loss.double()
+
     return total_loss
 
 
